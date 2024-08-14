@@ -4,7 +4,6 @@ import { Cell, TupleItem } from '@ton/core';
 import { InitializedEvent, Logger, logger, LoggingDebugSession, OutputEvent, StoppedEvent, TerminatedEvent, Thread } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { basename } from 'node:path';
-import { exit } from 'node:process';
 
 export type SourceMapEntry = {
     path: string;
@@ -368,7 +367,7 @@ export class TVMDebugSession extends LoggingDebugSession {
     }
 
     protected launchRequest(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments, request?: DebugProtocol.Request | undefined): void {
-        logger.setup(Logger.LogLevel.Verbose);
+        logger.setup(Logger.LogLevel.Log);
 
         this.debuggee.start(!args.noDebug, true);
 
