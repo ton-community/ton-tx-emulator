@@ -167,6 +167,7 @@ export class Blockchain {
     protected lock = new AsyncLock()
     protected contractFetches = new Map<string, Promise<SmartContract>>()
     protected nextCreateWalletIndex = 0
+    protected shouldDebug = false
 
     readonly executor: IExecutor
 
@@ -209,6 +210,14 @@ export class Blockchain {
         this.logsVerbosity = { ...snapshot.verbosity }
         this.globalLibs = snapshot.libs
         this.nextCreateWalletIndex = snapshot.nextCreateWalletIndex
+    }
+
+    get debug() {
+        return this.shouldDebug
+    }
+
+    set debug(value: boolean) {
+        this.shouldDebug = value
     }
 
     /**

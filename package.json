@@ -1,6 +1,6 @@
 {
   "name": "@ton/sandbox",
-  "version": "0.20.0",
+  "version": "0.21.0-debugger.0",
   "description": "TON transaction emulator",
   "main": "dist/index.js",
   "license": "MIT",
@@ -13,12 +13,14 @@
     "url": "git+https://github.com/ton-org/sandbox"
   },
   "devDependencies": {
+    "@ton/blueprint": "0.23.0-debugger.0",
     "@ton/core": "^0.56.0",
     "@ton/crypto": "3.2.0",
     "@ton/test-utils": "^0.3.1",
     "@ton/ton": "^13.11.0",
     "@types/jest": "^29.5.0",
     "@types/node": "^18.15.11",
+    "@vscode/debugprotocol": "^1.66.0",
     "jest": "^29.5.0",
     "ts-jest": "^29.0.5",
     "ts-node": "^10.9.1",
@@ -35,5 +37,8 @@
     "build": "rm -rf dist && yarn wasm:pack && yarn test && tsc && yarn wasm:copy",
     "config:pack": "ts-node ./scripts/pack-config.ts"
   },
-  "packageManager": "yarn@3.6.1"
+  "packageManager": "yarn@3.6.1",
+  "dependencies": {
+    "@vscode/debugadapter": "^1.66.0"
+  }
 }

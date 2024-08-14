@@ -13,7 +13,9 @@ import {
     TupleItem, TupleReader
 } from "@ton/core";
 import {getSelectorForMethod} from "../utils/selector";
-import { EmulationResult, ExecutorVerbosity, RunCommonArgs, TickOrTock } from "../executor/Executor";
+import { EmulationResult, Executor, ExecutorVerbosity, GetMethodArgs, RunCommonArgs, TickOrTock, GetMethodResult as ExecutorGetMethodResult, RunTransactionArgs } from "../executor/Executor";
+import { debugGetMethod, debugTransaction } from "../debugger/debug";
+import { defaultSourceMapCache } from "../debugger/SourceMapCache";
 
 export function createShardAccount(args: { address?: Address, code: Cell, data: Cell, balance: bigint, workchain?: number }): ShardAccount {
     let wc = args.workchain ?? 0
@@ -178,6 +180,7 @@ export class SmartContract {
     #parsedAccount?: ShardAccount
     #lastTxTime: number
     #verbosity?: Partial<LogsVerbosity>
+    #debug?: boolean
 
     constructor(shardAccount: ShardAccount, blockchain: Blockchain) {
         this.address = shardAccount.account!.addr
@@ -278,10 +281,33 @@ export class SmartContract {
             now: this.blockchain.now,
             ...params,
         }
-        return await this.runCommon(() => this.blockchain.executor.runTransaction({
+        const args: RunTransactionArgs = {
             ...this.createCommonArgs(params),
             message: beginCell().store(storeMessage(message)).endCell(),
-        }))
+        }
+        if (this.debug) {
+            const acc = this.account
+            if (acc.account === undefined || acc.account === null) {
+                console.log('Debugging uninitialized accounts is unsupported in debugger beta')
+                return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
+            }
+            if (acc.account.storage.state.type !== 'active') {
+                console.log('Debugging uninitialized accounts is unsupported in debugger beta')
+                return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
+            }
+            const code = acc.account.storage.state.state.code
+            if (code === undefined || code === null) {
+                console.log('Debugging uninitialized accounts is unsupported in debugger beta')
+                return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
+            }
+            const sm = defaultSourceMapCache.get(code.hash().toString('base64'))
+            if (sm === undefined) {
+                return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
+            }
+            return await this.runCommon(() => debugTransaction(this.blockchain.executor as Executor, args, code, sm))
+        } else {
+            return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
+        }
     }
 
     async runTickTock(which: TickOrTock, params?: MessageParams) {
@@ -335,7 +361,7 @@ export class SmartContract {
             throw new Error('Trying to run get method on non-active contract')
         }
 
-        const res = await this.blockchain.executor.runGetMethod({
+        const args: GetMethodArgs = {
             code: this.account.account?.storage.state.state.code!,
             data: this.account.account?.storage.state.state.data!,
             methodId: typeof method === 'string' ? getSelectorForMethod(method) : method,
@@ -349,7 +375,19 @@ export class SmartContract {
             randomSeed: params?.randomSeed ?? Buffer.alloc(32),
             gasLimit: params?.gasLimit ?? 10_000_000n,
             debugEnabled: this.verbosity.debugLogs,
-        })
+        }
+
+        let res: ExecutorGetMethodResult
+        if (this.debug) {
+            const sm = defaultSourceMapCache.get(args.code.hash().toString('base64'))
+            if (sm === undefined) {
+                res = await this.blockchain.executor.runGetMethod(args)
+            } else {
+                res = await debugGetMethod(this.blockchain.executor as Executor, args, sm)
+            }
+        } else {
+            res = await this.blockchain.executor.runGetMethod(args)
+        }
 
         if (this.verbosity.print && this.verbosity.blockchainLogs && res.logs.length > 0) {
             console.log(res.logs)
@@ -411,5 +449,13 @@ export class SmartContract {
         } else {
             this.#verbosity = verbosity
         }
+    }
+
+    get debug() {
+        return this.#debug ?? this.blockchain.debug
+    }
+
+    setDebug(debug: boolean | undefined) {
+        this.#debug = debug
     }
 }

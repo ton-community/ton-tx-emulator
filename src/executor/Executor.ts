@@ -1,4 +1,4 @@
-import {Address, Cell, serializeTuple, TupleItem} from "@ton/core";
+import {Address, Cell, parseTuple, serializeTuple, TupleItem} from "@ton/core";
 import {base64Decode} from "../utils/base64";
 const EmulatorModule = require('./emulator-emscripten.js');
 
@@ -220,16 +220,22 @@ export class Executor implements IExecutor {
         verbosity: number
     }
     private debugLogs: string[] = []
+    debugLogFunc: (s: string) => void = () => {}
 
     private constructor(module: any) {
         this.module = module
         this.heap = new Heap(module)
     }
 
+    private handleLog(text: string) {
+        this.debugLogs.push(text)
+        this.debugLogFunc(text)
+    }
+
     static async create() {
         const ex = new Executor(await EmulatorModule({
             wasmBinary: base64Decode(require('./emulator-emscripten.wasm.js').EmulatorEmscriptenWasm),
-            printErr: (text: string) => ex.debugLogs.push(text),
+            printErr: (text: string) => ex.handleLog(text),
         }))
         return ex
     }
@@ -376,5 +382,155 @@ export class Executor implements IExecutor {
         const str = this.module.UTF8ToString(ptr)
         this.module._free(ptr)
         return str
+    }
+
+    sbsGetMethodSetup(args: GetMethodArgs) {
+        const params: GetMethodInternalParams = {
+            code: args.code.toBoc().toString('base64'),
+            data: args.data.toBoc().toString('base64'),
+            verbosity: verbosityToNum[args.verbosity],
+            libs: args.libs?.toBoc().toString('base64') ?? '',
+            address: args.address.toString(),
+            unixtime: args.unixTime,
+            balance: args.balance.toString(),
+            rand_seed: args.randomSeed.toString('hex'),
+            gas_limit: args.gasLimit.toString(),
+            method_id: args.methodId,
+            debug_enabled: args.debugEnabled,
+        };
+
+        let stack = serializeTuple(args.stack)
+
+        this.debugLogs = []
+        const res = this.invoke('_setup_sbs_get_method', [
+            JSON.stringify(params),
+            stack.toBoc().toString('base64'),
+            args.config,
+        ])
+
+        return res
+    }
+
+    destroyTvmEmulator(ptr: number) {
+        this.invoke('_destroy_tvm_emulator', [ptr]);
+    }
+
+    sbsGetMethodStep(ptr: number) {
+        const res = this.invoke('_sbs_step', [
+            ptr,
+        ])
+
+        return res !== 0
+    }
+
+    sbsGetMethodStack(ptr: number) {
+        const resp = this.extractString(this.invoke('_sbs_get_stack', [
+            ptr
+        ]))
+
+        return parseTuple(Cell.fromBase64(resp))
+    }
+
+    sbsGetMethodCodePos(ptr: number) {
+        const resp = this.extractString(this.invoke('_sbs_get_code_pos', [
+            ptr
+        ]))
+
+        const parts = resp.split(':')
+
+        return {
+            hash: parts[0],
+            offset: parseInt(parts[1]),
+        }
+    }
+
+    sbsGetMethodResult(ptr: number): GetMethodResult {
+        const resp = JSON.parse(this.extractString(this.invoke('_sbs_get_method_result', [
+            ptr
+        ])))
+
+        const debugLogs = this.debugLogs.join('\n')
+
+        return {
+            output: resp,
+            logs: 'BLOCKCHAIN LOGS ARE NOT AVAILABLE IN DEBUGGER BETA',
+            debugLogs,
+        };
+    }
+
+    sbsTransactionSetup(args: RunTransactionArgs) {
+        const emptr = this.invoke('_create_emulator', [
+            args.config,
+            verbosityToNum[args.verbosity],
+        ]);
+
+        const params: EmulationInternalParams = runCommonArgsToInternalParams(args)
+
+        this.debugLogs = []
+        const res = this.invoke('_emulate_sbs', [
+            emptr,
+            args.libs?.toBoc().toString('base64') ?? 0,
+            args.shardAccount,
+            args.message.toBoc().toString('base64'),
+            JSON.stringify(params),
+        ]);
+
+        return { res, emptr };
+    }
+
+    destroyEmulator(ptr: number) {
+        this.invoke('_destroy_emulator', [ptr]);
+    }
+
+    sbsTransactionStep(ptr: number) {
+        const res = this.invoke('_em_sbs_step', [ptr]);
+
+        return res !== 0
+    }
+
+    sbsTransactionCodePos(ptr: number) {
+        const resp = this.extractString(this.invoke('_em_sbs_code_pos', [ptr]))
+
+        const parts = resp.split(':')
+
+        return {
+            hash: parts[0],
+            offset: parseInt(parts[1]),
+        }
+    }
+
+    sbsTransactionStack(ptr: number) {
+        const resp = this.extractString(this.invoke('_em_sbs_stack', [
+            ptr
+        ]))
+
+        return parseTuple(Cell.fromBase64(resp))
+    }
+
+    sbsTransactionResult(ptr: number): EmulationResult {
+        const result = JSON.parse(this.extractString(this.invoke('_em_sbs_result', [
+            ptr
+        ])))
+
+        const debugLogs = this.debugLogs.join('\n')
+
+        return {
+            result: result.success ? {
+                success: true,
+                transaction: result.transaction,
+                shardAccount: result.shard_account,
+                vmLog: result.vm_log,
+                actions: result.actions,
+            } : {
+                success: false,
+                error: result.error,
+                vmResults: 'vm_log' in result ? {
+                    vmLog: result.vm_log,
+                    vmExitCode: result.vm_exit_code,
+                } : undefined,
+            },
+            logs: 'BLOCKCHAIN LOGS ARE NOT AVAILABLE IN DEBUGGER BETA',
+            debugLogs,
+        };
     }
 }
