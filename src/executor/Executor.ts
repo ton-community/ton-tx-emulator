@@ -1,4 +1,4 @@
-import {Address, Cell, parseTuple, serializeTuple, TupleItem} from "@ton/core";
+import {Address, beginCell, Cell, parseTuple, serializeTuple, TupleItem} from "@ton/core";
 import {base64Decode} from "../utils/base64";
 const EmulatorModule = require('./emulator-emscripten.js');
 
@@ -431,6 +431,14 @@ export class Executor implements IExecutor {
         return parseTuple(Cell.fromBase64(resp))
     }
 
+    sbsGetMethodC7(ptr: number) {
+        const resp = this.extractString(this.invoke('_sbs_get_c7', [
+            ptr
+        ]))
+
+        return parseTuple(beginCell().storeUint(1, 24).storeRef(Cell.EMPTY).storeSlice(Cell.fromBase64(resp).beginParse()).endCell())[0]
+    }
+
     sbsGetMethodCodePos(ptr: number) {
         const resp = this.extractString(this.invoke('_sbs_get_code_pos', [
             ptr
@@ -505,6 +513,14 @@ export class Executor implements IExecutor {
         ]))
 
         return parseTuple(Cell.fromBase64(resp))
+    }
+
+    sbsTransactionC7(ptr: number) {
+        const resp = this.extractString(this.invoke('_em_sbs_c7', [
+            ptr
+        ]))
+
+        return parseTuple(beginCell().storeUint(1, 24).storeRef(Cell.EMPTY).storeSlice(Cell.fromBase64(resp).beginParse()).endCell())[0]
     }
 
     sbsTransactionResult(ptr: number): EmulationResult {

@@ -1,6 +1,6 @@
 {
   "name": "@ton/sandbox",
-  "version": "0.21.0-debugger.1",
+  "version": "0.21.0-debugger.2",
   "description": "TON transaction emulator",
   "main": "dist/index.js",
   "license": "MIT",
@@ -13,7 +13,7 @@
     "url": "git+https://github.com/ton-org/sandbox"
   },
   "devDependencies": {
-    "@ton/blueprint": "0.23.0-debugger.0",
+    "@ton/blueprint": "0.23.0-debugger.1",
     "@ton/core": "^0.56.0",
     "@ton/crypto": "3.2.0",
     "@ton/test-utils": "^0.3.1",

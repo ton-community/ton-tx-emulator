@@ -88,4 +88,4 @@ export {
 
 export {
     registerCompiledContract,
-} from './debugger/SourceMapCache';
+} from './debugger/DebugInfoCache';

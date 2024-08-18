@@ -15,7 +15,7 @@ import {
 import {getSelectorForMethod} from "../utils/selector";
 import { EmulationResult, Executor, ExecutorVerbosity, GetMethodArgs, RunCommonArgs, TickOrTock, GetMethodResult as ExecutorGetMethodResult, RunTransactionArgs } from "../executor/Executor";
 import { debugGetMethod, debugTransaction } from "../debugger/debug";
-import { defaultSourceMapCache } from "../debugger/SourceMapCache";
+import { defaultDebugInfoCache } from "../debugger/DebugInfoCache";
 
 export function createShardAccount(args: { address?: Address, code: Cell, data: Cell, balance: bigint, workchain?: number }): ShardAccount {
     let wc = args.workchain ?? 0
@@ -300,7 +300,7 @@ export class SmartContract {
                 console.log('Debugging uninitialized accounts is unsupported in debugger beta')
                 return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
             }
-            const sm = defaultSourceMapCache.get(code.hash().toString('base64'))
+            const sm = defaultDebugInfoCache.get(code.hash().toString('base64'))
             if (sm === undefined) {
                 return await this.runCommon(() => this.blockchain.executor.runTransaction(args))
             }
@@ -379,11 +379,11 @@ export class SmartContract {
 
         let res: ExecutorGetMethodResult
         if (this.debug) {
-            const sm = defaultSourceMapCache.get(args.code.hash().toString('base64'))
-            if (sm === undefined) {
+            const di = defaultDebugInfoCache.get(args.code.hash().toString('base64'))
+            if (di === undefined) {
                 res = await this.blockchain.executor.runGetMethod(args)
             } else {
-                res = await debugGetMethod(this.blockchain.executor as Executor, args, sm)
+                res = await debugGetMethod(this.blockchain.executor as Executor, args, di)
             }
         } else {
             res = await this.blockchain.executor.runGetMethod(args)

@@ -15,10 +15,24 @@ export type SourceMap = {
     [k: number]: SourceMapEntry;
 };
 
+export type GlobalEntry = {
+    name: string;
+};
+
+export type DebugInfo = {
+    sourceMap: SourceMap;
+    globals: GlobalEntry[];
+};
+
 type Breakpoint = {
     id: number;
     line: number;
     verified: boolean;
+};
+
+export type Variable = {
+    name: string;
+    value: TupleItem;
 };
 
 export class Debuggee extends EventEmitter {
@@ -31,6 +45,7 @@ export class Debuggee extends EventEmitter {
     breakpoints: Map<string, Breakpoint[]> = new Map();
     breakpointID: number = 0;
     frames: string[] = [];
+    globals: GlobalEntry[] = [];
     finishedCallback: (v: any) => void;
 
     constructor(executor: Executor, finishedCallback: (v: any) => void) {
@@ -52,6 +67,11 @@ export class Debuggee extends EventEmitter {
         }
     }
 
+    setDebugInfo(debugInfo: DebugInfo) {
+        this.setSourceMap(debugInfo.sourceMap);
+        this.setGlobals(debugInfo.globals);
+    }
+
     setSourceMap(sourceMap: SourceMap) {
         this.sourceMap = sourceMap;
         for (const di in sourceMap) {
@@ -61,6 +81,10 @@ export class Debuggee extends EventEmitter {
             }
             this.availableLines[sem.path].push(sem.line);
         }
+    }
+
+    setGlobals(globals: GlobalEntry[]) {
+        this.globals = globals;
     }
 
     getAvailableSourcePaths() {
@@ -101,6 +125,15 @@ export class Debuggee extends EventEmitter {
         this.debugType = 'tx';
     }
 
+    getC7() {
+        switch (this.debugType) {
+            case 'get':
+                return this.executor.sbsGetMethodC7(this.ptr);
+            case 'tx':
+                return this.executor.sbsTransactionC7(this.ptr);
+        }
+    }
+
     vmStep() {
         switch (this.debugType) {
             case 'get':
@@ -126,6 +159,51 @@ export class Debuggee extends EventEmitter {
             case 'tx':
                 return this.executor.sbsTransactionStack(this.ptr);
         }
+    }
+
+    getLocalVariables(): Variable[] | undefined {
+        const sme = this.currentSourceMapEntry();
+        if (sme === undefined) {
+            return undefined;
+        }
+
+        const vars: Variable[] = [];
+
+        const stack = this.getStack();
+        for (let i = 0; i < sme.variables.length; i++) {
+            vars.push({
+                name: sme.variables[i],
+                value: stack[i],
+            });
+        }
+
+        return vars;
+    }
+
+    getGlobalVariables(): Variable[] | undefined {
+        const vars: Variable[] = [];
+
+        const c7item = this.getC7();
+        if (c7item.type !== 'tuple') {
+            return undefined;
+        }
+        const c7 = c7item.items;
+        for (let i = 0; i < this.globals.length; i++) {
+            if (i + 1 < c7.length) {
+                vars.push({
+                    name: this.globals[i].name,
+                    value: c7[i+1],
+                });
+                continue;
+            }
+
+            vars.push({
+                name: this.globals[i].name,
+                value: { type: 'null' },
+            });
+        }
+
+        return vars;
     }
 
     currentDebugInfoNumber() {
@@ -238,16 +316,16 @@ export class Debuggee extends EventEmitter {
         }
     }
 
-    prepareGetMethod(args: GetMethodArgs, sourceMap: SourceMap) {
+    prepareGetMethod(args: GetMethodArgs, debugInfo: DebugInfo) {
         this.startGetMethod(args);
         this.setCodeCells(args.code);
-        this.setSourceMap(sourceMap);
+        this.setDebugInfo(debugInfo);
     }
 
-    prepareTransaction(args: RunTransactionArgs, code: Cell, sourceMap: SourceMap) {
+    prepareTransaction(args: RunTransactionArgs, code: Cell, debugInfo: DebugInfo) {
         this.startTransaction(args);
         this.setCodeCells(code);
-        this.setSourceMap(sourceMap);
+        this.setDebugInfo(debugInfo);
     }
 
     start(debug: boolean, stopOnEntry: boolean) {
@@ -260,293 +338,5 @@ export class Debuggee extends EventEmitter {
         } else {
             this.continue();
         }
-    }
-}
-
-export class TVMDebugSession extends LoggingDebugSession {
-    static readonly threadID = 1;
-    static readonly stackFrameID = 1;
-    static readonly variablesReference = 1;
-
-    debuggee: Debuggee;
-
-    constructor(debuggee: Debuggee) {
-        super();
-        this.debuggee = debuggee;
-
-        this.debuggee.on('stopOnEntry', () => {
-            this.sendEvent(new StoppedEvent('entry', TVMDebugSession.threadID));
-        });
-        this.debuggee.on('stopOnBreakpoint', () => {
-            this.sendEvent(new StoppedEvent('breakpoint', TVMDebugSession.threadID));
-        });
-        this.debuggee.on('stopOnStep', () => {
-            this.sendEvent(new StoppedEvent('step', TVMDebugSession.threadID));
-        });
-        this.debuggee.on('end', () => {
-            this.sendEvent(new TerminatedEvent());
-        });
-        this.debuggee.on('output', (s: string) => {
-            this.sendEvent(new OutputEvent(s + '\n', 'stdout'));
-        });
-    }
-
-    protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
-        response.body = response.body || {};
-
-        const b = response.body;
-
-        b.supportsConfigurationDoneRequest = false;
-        b.supportsFunctionBreakpoints = false;
-        b.supportsConditionalBreakpoints = false;
-        b.supportsHitConditionalBreakpoints = false;
-        b.supportsEvaluateForHovers = false;
-        b.supportsStepBack = false;
-        b.supportsSetVariable = false;
-        b.supportsRestartFrame = false;
-        b.supportsGotoTargetsRequest = false;
-        b.supportsStepInTargetsRequest = false;
-        b.supportsCompletionsRequest = false;
-        b.supportsModulesRequest = false;
-        b.supportsRestartRequest = false;
-        b.supportsValueFormattingOptions = false;
-        b.supportsExceptionInfoRequest = false;
-        b.supportTerminateDebuggee = false;
-        b.supportSuspendDebuggee = false;
-        b.supportsDelayedStackTraceLoading = false;
-        b.supportsLoadedSourcesRequest = true;
-        b.supportsLogPoints = false;
-        b.supportsTerminateThreadsRequest = false;
-        b.supportsSetExpression = false;
-        b.supportsTerminateRequest = false;
-        b.supportsDataBreakpoints = false;
-        b.supportsReadMemoryRequest = false;
-        b.supportsWriteMemoryRequest = false;
-        b.supportsDisassembleRequest = false;
-        b.supportsCancelRequest = false;
-        b.supportsBreakpointLocationsRequest = true;
-        b.supportsClipboardContext = false;
-        b.supportsSteppingGranularity = false;
-        b.supportsInstructionBreakpoints = false;
-        b.supportsExceptionFilterOptions = false;
-        b.supportsSingleThreadExecutionRequests = false;
-
-        this.sendResponse(response);
-
-        this.sendEvent(new InitializedEvent());
-    }
-
-    protected loadedSourcesRequest(response: DebugProtocol.LoadedSourcesResponse, args: DebugProtocol.LoadedSourcesArguments, request?: DebugProtocol.Request | undefined): void {
-        response.body = response.body || {};
-
-        response.body.sources = this.debuggee.getAvailableSourcePaths().map(v => ({
-            path: v,
-            name: basename(v),
-        }));
-
-        this.sendResponse(response);
-    }
-
-    protected breakpointLocationsRequest(response: DebugProtocol.BreakpointLocationsResponse, args: DebugProtocol.BreakpointLocationsArguments, request?: DebugProtocol.Request | undefined): void {
-        response.body = response.body || {};
-
-        const path = args.source.path;
-        if (path === undefined) {
-            this.sendErrorResponse(response, {
-                id: 1001,
-                format: 'No path',
-            });
-            return;
-        }
-
-        response.body.breakpoints = this.debuggee.getAvailableLines(path).filter(l => l >= args.line && l <= (args.endLine ?? args.line)).map(l => ({
-            line: l,
-        }));
-
-        this.sendResponse(response);
-    }
-
-    protected launchRequest(response: DebugProtocol.LaunchResponse, args: DebugProtocol.LaunchRequestArguments, request?: DebugProtocol.Request | undefined): void {
-        logger.setup(Logger.LogLevel.Log);
-
-        this.debuggee.start(!args.noDebug, true);
-
-        this.sendResponse(response);
-    }
-
-    protected attachRequest(response: DebugProtocol.AttachResponse, args: DebugProtocol.AttachRequestArguments, request?: DebugProtocol.Request | undefined): void {
-        this.launchRequest(response, args, request);
-    }
-
-    protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments, request?: DebugProtocol.Request | undefined): void {
-        const path = args.source.path;
-        if (path === undefined) {
-            this.sendErrorResponse(response, {
-                id: 1001,
-                format: 'No path',
-            });
-            return;
-        }
-
-        const breakpoints = args.breakpoints;
-        if (breakpoints === undefined) {
-            this.sendErrorResponse(response, {
-                id: 1002,
-                format: 'No breakpoints',
-            });
-            return;
-        }
-
-        this.debuggee.clearBreakpoints(path);
-
-        const bps: DebugProtocol.Breakpoint[] = [];
-        for (const bp of breakpoints) {
-            const sbp = this.debuggee.setBreakpoint(path, bp.line);
-            bps.push({
-                id: sbp.id,
-                line: sbp.line,
-                verified: sbp.verified,
-            });
-        }
-
-        response.body = {
-            breakpoints: bps,
-        };
-        this.sendResponse(response);
-    }
-
-    protected threadsRequest(response: DebugProtocol.ThreadsResponse, request?: DebugProtocol.Request | undefined): void {
-        response.body = {
-            threads: [
-                new Thread(TVMDebugSession.threadID, 'main'),
-            ],
-        };
-        this.sendResponse(response);
-    }
-
-    protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.continue();
-        this.sendResponse(response);
-    }
-
-    protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
-        this.sendResponse(response);
-    }
-
-    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
-        this.sendResponse(response);
-    }
-
-    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
-        this.sendResponse(response);
-    }
-
-    protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments, request?: DebugProtocol.Request | undefined): void {
-        response.body = response.body || {};
-
-        const sme = this.debuggee.currentSourceMapEntry();
-        if (sme === undefined) {
-            response.body.stackFrames = [];
-            response.body.totalFrames = 0;
-            this.sendResponse(response);
-            return;
-        }
-
-        response.body.totalFrames = 1;
-
-        if (args.startFrame ?? 0 > 0) {
-            response.body.stackFrames = [];
-            this.sendResponse(response);
-            return;
-        }
-
-        response.body.stackFrames = [{
-            id: TVMDebugSession.stackFrameID,
-            name: 'func',
-            line: sme.line,
-            column: 0,
-            source: {
-                name: basename(sme.path),
-                path: sme.path,
-            },
-        }];
-
-        this.sendResponse(response);
-    }
-
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments, request?: DebugProtocol.Request | undefined): void {
-        response.body = response.body || {};
-
-        const sme = this.debuggee.currentSourceMapEntry();
-        if (sme === undefined) {
-            response.body.scopes = [];
-            this.sendResponse(response);
-            return;
-        }
-
-        response.body.scopes = [{
-            name: 'Locals',
-            variablesReference: TVMDebugSession.variablesReference,
-            expensive: false,
-        }];
-
-        this.sendResponse(response);
-    }
-
-    protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments, request?: DebugProtocol.Request | undefined): void {
-        response.body = response.body || {};
-
-        response.body.variables = [];
-
-        const sme = this.debuggee.currentSourceMapEntry();
-        if (sme === undefined) {
-            this.sendResponse(response);
-            return;
-        }
-
-        const stack = this.debuggee.getStack();
-        for (let i = 0; i < sme.variables.length; i++) {
-            response.body.variables.push({
-                name: sme.variables[i],
-                value: tupleItemToString(stack[i]),
-                type: stack[i].type,
-                variablesReference: 0,
-            });
-        }
-
-        response.body.variables.sort((a, b) => (a.name < b.name) ? -1 : (a.name > b.name ? 1 : 0));
-
-        this.sendResponse(response);
-    }
-
-    protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments, request?: DebugProtocol.Request | undefined): void {
-        if (args.restart) {
-            this.sendErrorResponse(response, {
-                id: 1003,
-                format: 'Cannot restart',
-            });
-        } else {
-            this.sendResponse(response);
-        }
-    }
-}
-
-function tupleItemToString(ti: TupleItem): string {
-    switch (ti.type) {
-        case 'int':
-            return ti.value.toString();
-        case 'null':
-            return 'null';
-        case 'nan':
-            return 'NaN';
-        case 'cell':
-        case 'slice':
-        case 'builder':
-            return ti.cell.toBoc().toString('base64');
-        case 'tuple':
-            return `[${ti.items.map(v => tupleItemToString(v)).join(', ')}]`;
     }
 }
