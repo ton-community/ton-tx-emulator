@@ -439,6 +439,19 @@ export class Executor implements IExecutor {
         return parseTuple(beginCell().storeUint(1, 24).storeRef(Cell.EMPTY).storeSlice(Cell.fromBase64(resp).beginParse()).endCell())[0]
     }
 
+    sbsGetMethodGetContParam(ptr: number) {
+        return this.invoke('_sbs_get_cont_param', [
+            ptr
+        ])
+    }
+
+    sbsGetMethodSetContParam(ptr: number, param: number) {
+        return this.invoke('_sbs_set_cont_param', [
+            ptr,
+            param
+        ])
+    }
+
     sbsGetMethodCodePos(ptr: number) {
         const resp = this.extractString(this.invoke('_sbs_get_code_pos', [
             ptr
@@ -521,6 +534,19 @@ export class Executor implements IExecutor {
         ]))
 
         return parseTuple(beginCell().storeUint(1, 24).storeRef(Cell.EMPTY).storeSlice(Cell.fromBase64(resp).beginParse()).endCell())[0]
+    }
+
+    sbsTransactionGetContParam(ptr: number) {
+        return this.invoke('_em_sbs_get_cont_param', [
+            ptr
+        ])
+    }
+
+    sbsTransactionSetContParam(ptr: number, param: number) {
+        return this.invoke('_em_sbs_set_cont_param', [
+            ptr,
+            param
+        ])
     }
 
     sbsTransactionResult(ptr: number): EmulationResult {

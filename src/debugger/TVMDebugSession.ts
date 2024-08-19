@@ -172,17 +172,17 @@ export class TVMDebugSession extends LoggingDebugSession {
     }
 
     protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
+        this.debuggee.stepOver();
         this.sendResponse(response);
     }
 
     protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
+        this.debuggee.stepIn();
         this.sendResponse(response);
     }
 
     protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments, request?: DebugProtocol.Request | undefined): void {
-        this.debuggee.step();
+        this.debuggee.stepOut();
         this.sendResponse(response);
     }
 
@@ -197,30 +197,45 @@ export class TVMDebugSession extends LoggingDebugSession {
             return;
         }
 
-        response.body.totalFrames = 1;
+        const frames = this.debuggee.stackFrames();
 
-        if (args.startFrame ?? 0 > 0) {
+        response.body.totalFrames = frames.length;
+
+        if (args.startFrame ?? 0 >= frames.length) {
             response.body.stackFrames = [];
             this.sendResponse(response);
             return;
         }
 
-        response.body.stackFrames = [{
-            id: TVMDebugSession.stackFrameID,
-            name: 'func',
-            line: sme.line,
-            column: 0,
-            source: {
-                name: basename(sme.path),
-                path: sme.path,
-            },
-        }];
+        response.body.stackFrames = [];
+
+        for (let i = args.startFrame ?? 0; i < frames.length; i++) {
+            const frame = frames[i];
+            response.body.stackFrames.push({
+                id: i === frames.length - 1 ? TVMDebugSession.stackFrameID : 0,
+                name: frame.function,
+                line: frame.line,
+                column: 0,
+                source: {
+                    name: basename(frame.path),
+                    path: frame.path,
+                },
+            });
+        }
+
+        response.body.stackFrames.reverse();
 
         this.sendResponse(response);
     }
 
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments, request?: DebugProtocol.Request | undefined): void {
         response.body = response.body || {};
+
+        if (args.frameId !== TVMDebugSession.stackFrameID) {
+            response.body.scopes = [];
+            this.sendResponse(response);
+            return;
+        }
 
         const sme = this.debuggee.currentSourceMapEntry();
         if (sme === undefined) {

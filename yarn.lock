@@ -936,32 +936,32 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ton-community/func-js-bin@npm:0.4.4-debuginfo.1":
-  version: 0.4.4-debuginfo.1
-  resolution: "@ton-community/func-js-bin@npm:0.4.4-debuginfo.1"
-  checksum: 0a91a317982ad970acd9674b7c85e47dd25dd1bd7e378ff3cc7d7d06e76c640e874c4d3f544681fc734d99d78640162f11317330916929ebd23fb0cde4119760
+"@ton-community/func-js-bin@npm:0.4.4-debuginfo.2":
+  version: 0.4.4-debuginfo.2
+  resolution: "@ton-community/func-js-bin@npm:0.4.4-debuginfo.2"
+  checksum: 0f2bfc7aa06c5c251623aeed56d16f1027d3def52301fe06589c605df3e7cafe3a429545d395960461191a2fef85394ef0c1f2633063550c4f4731d83d142b38
   languageName: node
   linkType: hard
 
-"@ton-community/func-js@npm:^0.8.0-debuginfo.1":
-  version: 0.8.0-debuginfo.1
-  resolution: "@ton-community/func-js@npm:0.8.0-debuginfo.1"
+"@ton-community/func-js@npm:^0.8.0-debuginfo.2":
+  version: 0.8.0-debuginfo.2
+  resolution: "@ton-community/func-js@npm:0.8.0-debuginfo.2"
   dependencies:
-    "@ton-community/func-js-bin": 0.4.4-debuginfo.1
+    "@ton-community/func-js-bin": 0.4.4-debuginfo.2
     arg: ^5.0.2
   bin:
     func-js: dist/cli.js
-  checksum: 236daba3ff3e583a04f31b79fa6c191998ad53e7350e2983f98dd23ecf0186aa23748013f4cc880fa2dabaf0708a641ebbfff88f3ab7db9ac7c74170f3204448
+  checksum: 090cc8634cc79ad429816e53b1422f8e3485dc6e84ab11dd38f86a43016719916fdae6c58a669ac5bb4d7b22f1bf482e1d35181a935b391c919ab642cf16aefb
   languageName: node
   linkType: hard
 
-"@ton/blueprint@npm:0.23.0-debugger.1":
-  version: 0.23.0-debugger.1
-  resolution: "@ton/blueprint@npm:0.23.0-debugger.1"
+"@ton/blueprint@npm:0.23.0-debugger.2":
+  version: 0.23.0-debugger.2
+  resolution: "@ton/blueprint@npm:0.23.0-debugger.2"
   dependencies:
     "@orbs-network/ton-access": ^2.3.3
     "@tact-lang/compiler": ^1.4.0
-    "@ton-community/func-js": ^0.8.0-debuginfo.1
+    "@ton-community/func-js": ^0.8.0-debuginfo.2
     "@tonconnect/sdk": ^2.2.0
     arg: ^5.0.2
     chalk: ^4.1.0
@@ -976,7 +976,7 @@ __metadata:
     "@ton/ton": ">=13.11.0"
   bin:
     blueprint: ./dist/cli/cli.js
-  checksum: 55837ac633187db30cc4828a5b2688ca2b1e4c4cdde7a0c0bad5b32bab29aaa8201c3dbd602a9ebbe0a883bb7403ac019558a917c5534abfed95480334ad800e
+  checksum: 8602ff657a211c2413c78c933f185a686f3127331af1491cd932b5fabe09fb6f16555fb512f77f9eeb6eedfe36e55df7750da47b5f43929a1a7b2ce3810e26c9
   languageName: node
   linkType: hard
 
@@ -1046,7 +1046,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@ton/sandbox@workspace:."
   dependencies:
-    "@ton/blueprint": 0.23.0-debugger.1
+    "@ton/blueprint": 0.23.0-debugger.2
     "@ton/core": ^0.56.0
     "@ton/crypto": 3.2.0
     "@ton/test-utils": ^0.3.1

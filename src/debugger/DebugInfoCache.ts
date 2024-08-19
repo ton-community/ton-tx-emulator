@@ -21,12 +21,29 @@ export function registerCompiledContract(c: CompileResult) {
 
     for (let i = 0; i < locations.length; i++) {
         const di = locations[i];
-        if (di.ret || di.vars === undefined) continue;
-        sm[i] = {
+        const common = {
             path: resolve(di.file),
             line: di.line,
-            variables: di.vars ?? [],
+            function: di.func,
         };
+        if (di.ret) {
+            sm[i] = {
+                ...common,
+                type: 'return',
+            };
+        } else if (di.is_catch) {
+            sm[i] = {
+                ...common,
+                type: 'catch',
+            };
+        } else {
+            sm[i] = {
+                ...common,
+                type: 'statement',
+                variables: di.vars ?? [],
+                firstStatement: di.first_stmt,
+            };
+        }
     }
 
     defaultDebugInfoCache.set(c.code.hash().toString('base64'), {

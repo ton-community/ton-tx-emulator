@@ -1,15 +1,20 @@
 import EventEmitter from 'node:events';
 import { Executor, GetMethodArgs, RunTransactionArgs } from '../executor/Executor';
 import { Cell, TupleItem } from '@ton/core';
-import { InitializedEvent, Logger, logger, LoggingDebugSession, OutputEvent, StoppedEvent, TerminatedEvent, Thread } from '@vscode/debugadapter';
-import { DebugProtocol } from '@vscode/debugprotocol';
-import { basename } from 'node:path';
 
-export type SourceMapEntry = {
+export type SourceMapEntry = ({
     path: string;
     line: number;
+    function: string;
+}) & ({
+    type: 'statement';
     variables: string[];
-};
+    firstStatement?: true;
+} | {
+    type: 'return';
+} | {
+    type: 'catch';
+});
 
 export type SourceMap = {
     [k: number]: SourceMapEntry;
@@ -35,6 +40,12 @@ export type Variable = {
     value: TupleItem;
 };
 
+type StackFrame = {
+    function: string;
+    path: string;
+    line: number;
+};
+
 export class Debuggee extends EventEmitter {
     executor: Executor;
     ptr: number = 0;
@@ -44,7 +55,7 @@ export class Debuggee extends EventEmitter {
     codeCells: Map<string, Cell> = new Map();
     breakpoints: Map<string, Breakpoint[]> = new Map();
     breakpointID: number = 0;
-    frames: string[] = [];
+    frames: StackFrame[] = [];
     globals: GlobalEntry[] = [];
     finishedCallback: (v: any) => void;
 
@@ -104,11 +115,19 @@ export class Debuggee extends EventEmitter {
     }
 
     continue() {
-        this.stepUntilLine(true);
+        this.stepUntil({ type: 'breakpoint' });
     }
 
-    step(stopEvent = 'stopOnStep') {
-        this.stepUntilLine(false, stopEvent);
+    stepIn() {
+        this.stepUntil({ type: 'any-line', stopEvent: 'stopOnStep' });
+    }
+
+    stepOver() {
+        this.stepUntil({ type: 'next-line' });
+    }
+
+    stepOut() {
+        this.stepUntil({ type: 'out' });
     }
 
     startGetMethod(args: GetMethodArgs) {
@@ -161,9 +180,27 @@ export class Debuggee extends EventEmitter {
         }
     }
 
+    getContParam() {
+        switch (this.debugType) {
+            case 'get':
+                return this.executor.sbsGetMethodGetContParam(this.ptr);
+            case 'tx':
+                return this.executor.sbsTransactionGetContParam(this.ptr);
+        }
+    }
+
+    setContParam(param: number) {
+        switch (this.debugType) {
+            case 'get':
+                return this.executor.sbsGetMethodSetContParam(this.ptr, param);
+            case 'tx':
+                return this.executor.sbsTransactionSetContParam(this.ptr, param);
+        }
+    }
+
     getLocalVariables(): Variable[] | undefined {
         const sme = this.currentSourceMapEntry();
-        if (sme === undefined) {
+        if (sme === undefined || sme.type !== 'statement') {
             return undefined;
         }
 
@@ -297,7 +334,21 @@ export class Debuggee extends EventEmitter {
         this.finishedCallback(r)
     }
 
-    stepUntilLine(breakpointsOnly: boolean, stopEvent?: string) {
+    stackFrames(): StackFrame[] {
+        return this.frames
+    }
+
+    stepUntil(what: { type: 'breakpoint' } | { type: 'any-line', stopEvent: 'stopOnBreakpoint' | 'stopOnStep' } | { type: 'next-line' } | { type: 'out' }) {
+        let until: { type: 'breakpoint' } | { type: 'any-line', stopEvent: 'stopOnBreakpoint' | 'stopOnStep' } | { type: 'next-line', depth: number } | { type: 'out', depth: number }
+        switch (what.type) {
+            case 'next-line':
+            case 'out': {
+                until = { type: what.type, depth: this.frames.length }
+                break
+            }
+            default:
+                until = what
+        }
         while (true) {
             const finished = this.vmStep()
             if (finished) {
@@ -305,13 +356,61 @@ export class Debuggee extends EventEmitter {
                 return
             }
             const sme = this.currentSourceMapEntry()
-            if (sme !== undefined && (!breakpointsOnly || this.hasBreakpoint(sme.path, sme.line))) {
-                if (breakpointsOnly) {
-                    this.sendEvent('stopOnBreakpoint')
-                } else if (stopEvent !== undefined) {
-                    this.sendEvent(stopEvent)
+            if (sme !== undefined) {
+                switch (sme.type) {
+                    case 'statement': {
+                        if (sme.firstStatement) {
+                            this.frames.push({
+                                function: sme.function,
+                                path: sme.path,
+                                line: sme.line,
+                            })
+                            this.setContParam(this.frames.length)
+                        }
+
+                        this.frames[this.frames.length-1].line = sme.line
+
+                        switch (until.type) {
+                            case 'breakpoint': {
+                                if (this.hasBreakpoint(sme.path, sme.line)) {
+                                    this.sendEvent('stopOnBreakpoint')
+                                    return
+                                }
+                                break
+                            }
+                            case 'any-line': {
+                                this.sendEvent(until.stopEvent)
+                                return
+                            }
+                            case 'next-line': {
+                                if (this.frames.length <= until.depth) {
+                                    this.sendEvent('stopOnStep')
+                                    return
+                                }
+                                break
+                            }
+                            case 'out': {
+                                if (this.frames.length < until.depth) {
+                                    this.sendEvent('stopOnStep')
+                                    return
+                                }
+                                break
+                            }
+                        }
+
+                        break
+                    }
+                    case 'return': {
+                        this.frames.pop()
+
+                        break
+                    }
+                    case 'catch': {
+                        this.frames = this.frames.slice(0, this.getContParam())
+
+                        break
+                    }
                 }
-                return
             }
         }
     }
@@ -331,7 +430,7 @@ export class Debuggee extends EventEmitter {
     start(debug: boolean, stopOnEntry: boolean) {
         if (debug) {
             if (stopOnEntry) {
-                this.step('stopOnEntry');
+                this.stepUntil({ type: 'any-line', stopEvent: 'stopOnBreakpoint' });
             } else {
                 this.continue();
             }
