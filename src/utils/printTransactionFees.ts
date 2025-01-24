@@ -34,6 +34,8 @@ function formatCoins(value: bigint | undefined, precision = 6): string {
     return formatCoinsPure(value, precision) + ' TON';
 }
 
+export type OpMapFunc = (op: number) => string | null | undefined;
+
 /**
  * Prints transaction fees.
  * Example output:
@@ -45,9 +47,24 @@ function formatCoins(value: bigint | undefined, precision = 6): string {
  * │ 1       │ '0x45ab564' │ '1000 TON'     │ '998.8485 TON' │ '1.051473 TON' │ '0.000667 TON' │ '0.255 TON'   │ 255        │ '0.966474 TON' │ 0        │ 0          │
  * │ 2       │ '0x0'       │ '3.917053 TON' │ '0 TON'        │ '0.00031 TON'  │ '0.000667 TON' │ 'N/A'         │ 0          │ '0.000309 TON' │ 0        │ 0          │
  * ```
- * @param transactions List of transaction to print fees
+ * Example output with op mapping:
+ * ```
+ * ┌─────────┬─────────────┬────────────────┬────────────────┬────────────────┬────────────────┬───────────────┬────────────┬────────────────┬──────────┬────────────┐
+ * │ (index) │ op          │ valueIn        │ valueOut       │ totalFees      │ inForwardFee   │ outForwardFee │ outActions │ computeFee     │ exitCode │ actionCode │
+ * ├─────────┼─────────────┼────────────────┼────────────────┼────────────────┼────────────────┼───────────────┼────────────┼────────────────┼──────────┼────────────┤
+ * │ 0       │ 'N/A'       │ 'N/A'          │ '1000 TON'     │ '0.004007 TON' │ 'N/A'          │ '0.001 TON'   │ 1          │ '0.001937 TON' │ 0        │ 0          │
+ * │ 1       │ 'Action1'   │ '1000 TON'     │ '998.8485 TON' │ '1.051473 TON' │ '0.000667 TON' │ '0.255 TON'   │ 255        │ '0.966474 TON' │ 0        │ 0          │
+ * │ 2       │ 'Action2'   │ '3.917053 TON' │ '0 TON'        │ '0.00031 TON'  │ '0.000667 TON' │ 'N/A'         │ 0          │ '0.000309 TON' │ 0        │ 0          │
+ * ```
+ * 
+ * @param transactions List of transactions to print fees
+ * @param mapFunc Optional function to map op codes to human-readable format. If provided, operation codes will be mapped; otherwise, raw hexadecimal op codes will be displayed.
  */
-export function printTransactionFees(transactions: Transaction[]) {
+export function printTransactionFees(transactions: Transaction[], mapFunc?: OpMapFunc) {
+    const mapOp = (op: number | string): string => {
+        if (typeof op === 'string') return op;
+        return mapFunc ? (mapFunc(op) || op.toString(16)) : op.toString(16);
+    };
     console.table(
         transactions
         .map((tx) => {
@@ -82,7 +99,7 @@ export function printTransactionFees(transactions: Transaction[]) {
             );
 
             return {
-                op: typeof op === 'number' ? ('0x' + op.toString(16)) : op,
+                op: mapOp(op),
                 valueIn,
                 valueOut,
                 totalFees: totalFees,
