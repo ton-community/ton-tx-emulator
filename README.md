@@ -15,6 +15,7 @@ The key difference of this package from [ton-contract-executor](https://github.c
   * [Cross contract tests](#cross-contract-tests)
   * [Testing key points](#testing-key-points)
   * [Test examples](#test-examples)
+  * [Using assets in tests](#using-assets-in-tests)
 * [Sandbox pitfalls](#sandbox-pitfalls)
 * [Viewing logs](#viewing-logs)
 * [Setting smart contract state directly](#setting-smart-contract-state-directly)
@@ -282,6 +283,52 @@ In order to make sure that the contract will work as expected, you need to follo
 More information about testing key points can be found here: 
 * [Testing key point](docs/testing-key-points.md)
 
+### Using assets in tests
+
+It is a common thing to have interactions with jetton or nft in smart contracts. 
+To replicate jetton behaviour in tests you can use wrappers from `@ton-community/assets-sdk`.
+
+```typescript
+import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
+import { beginCell, toNano } from '@ton/core';
+import { JettonMinter, JettonWallet } from '@ton-community/assets-sdk';
+import '@ton/test-utils';
+
+describe('Jetton', () => {
+    let blockchain: Blockchain;
+    let deployer: SandboxContract<TreasuryContract>;
+    let jettonMinter: SandboxContract<JettonMinter>;
+
+    beforeAll(async () => {
+        blockchain = await Blockchain.create();
+        deployer = await blockchain.treasury('deployer');
+        jettonMinter = blockchain.openContract(JettonMinter.createFromConfig({
+            admin: deployer.address,
+            content: beginCell().storeStringTail('USDT').endCell()
+        }));
+
+        const deployResult = await jettonMinter.sendDeploy(deployer.getSender(), toNano(0.05));
+        expect(deployResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            on: jettonMinter.address,
+            deploy: true,
+            success: true,
+        })
+    });
+
+    it('should mint', async () => {
+        const jettonWalletAddress = await jettonMinter.getWalletAddress(deployer.address);
+        const jettonWallet = blockchain.openContract(JettonWallet.createFromAddress(jettonWalletAddress));
+
+        const jettonAmount = 10n;
+        await jettonMinter.sendMint(deployer.getSender(), deployer.address, jettonAmount);
+
+        const walletData = await jettonWallet.getData();
+
+        expect(walletData.balance).toEqual(jettonAmount);
+    });
+});
+```
 
 ### Test Examples
 You can typically find various tests for Sandbox-based project contracts in the `./tests` directory. 
